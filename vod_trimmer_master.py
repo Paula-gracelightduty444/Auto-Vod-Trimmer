@@ -126,9 +126,9 @@ speech_ratio, seg_duration=30.0):
     scream_bonus = 8.0 if (is_scream or (2000 < mic_pitch_peak < 4000)) else 0.0
     
     # --- THE WALL OF NOISE SHIELD ---
-    # Lowered back to 1.5 to still filter out low volume hums but retain supressed gunfire.
+    # Lowered back to 1.3 to still filter out low volume hums but retain supressed gunfire.
     # Gunfights and explosive impacts have sharp volume spikes (Crest factor > 2.5+).
-    is_wall_of_noise = (g_crest < 1.5)
+    is_wall_of_noise = (g_crest < 1.3)
 
     if is_wall_of_noise:
         combat_bonus = 0.0
