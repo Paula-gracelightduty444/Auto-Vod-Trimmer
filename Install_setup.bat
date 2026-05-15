@@ -22,7 +22,7 @@ echo [*] Python detected successfully.
 echo.
 echo [*] Installing required AI and Audio Python libraries...
 python -m pip install --upgrade pip
-python -m pip install numpy soundfile librosa tqdm faster-whisper customtkinter
+python -m pip install -r requirements.txt
 
 :: Step 3: Check and Install FFmpeg via Winget
 echo.

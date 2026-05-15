@@ -1,0 +1,6 @@
+numpy
+soundfile
+librosa
+tqdm
+faster-whisper
+customtkinter

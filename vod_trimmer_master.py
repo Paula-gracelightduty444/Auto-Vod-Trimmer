@@ -11,8 +11,11 @@ import io
 import re
 import logging
 import concurrent.futures
-from tqdm import tqdm
 import shorts_module
+import socket
+import random
+
+from tqdm import tqdm
 
 # ==========================================
 # 1. SYSTEM & CONFIGURATION INITIALIZATION
@@ -27,6 +30,8 @@ else:
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 CONFIG_FILE = os.path.join(SCRIPT_DIR, "config.ini")
+
+_instance_lock = None
 
 def load_or_create_config():
     config = configparser.ConfigParser()
@@ -61,6 +66,20 @@ def load_or_create_config():
             config.write(configfile)
     config.read(CONFIG_FILE)
     return config
+
+def acquire_instance_lock():
+    global _instance_lock
+    _instance_lock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        _instance_lock.bind(('127.0.0.1', 65432))
+    except socket.error:
+        print("\n" + "!"*70)
+        print(" [CRITICAL ERROR] VOD Trimmer is already running in another window!")
+        print("!"*70)
+        print("\nRunning multiple instances will overload your CPU and crash your PC.")
+        print("Please close the other terminal window before starting a new run.")
+        input("\nPress Enter to exit safely...")
+        sys.exit(1)
 
 # ==========================================
 # 2. VISUAL FEEDBACK (HEARTBEAT)
@@ -224,23 +243,12 @@ def analyze_acoustic_chunk(args):
 # ==========================================
 # 5. THE MAIN ENGINE
 # ==========================================
-import socket
 
 def process_vod():
     # --- SINGLE INSTANCE FAILSAFE ---
     # Attempts to bind to a local invisible port. If it fails, another instance is running.
     # The OS automatically releases the port when the script closes or crashes.
-    try:
-        instance_lock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        instance_lock.bind(('127.0.0.1', 65432))
-    except socket.error:
-        print("\n" + "!"*70)
-        print(" [CRITICAL ERROR] VOD Trimmer is already running in another window!")
-        print("!"*70)
-        print("\nRunning multiple instances will overload your CPU and crash your PC.")
-        print("Please close the other terminal window before starting a new run.")
-        input("\nPress Enter to exit safely...")
-        sys.exit(1)
+    acquire_instance_lock()
 
     print("\n" + "="*70)
     print(" 🎬  AUTO-VOD MASTER ENGINE (GOLD POCKET MATH)  🎬")
@@ -382,8 +390,9 @@ def process_vod():
             acoustic_results[i] = {'v_g': v_g, 'v_m': v_m, 'g_c': g_c, 'g_crest': g_crest, 'g_o': g_o, 'pros': pros, 'is_s': is_s, 'c_peak': c_peak, 'c_avg': c_avg}
 
         # --- PHASE 2: SEMANTIC PASS (WHISPER AI) ---
-    from faster_whisper import WhisperModel
     print("\n>>> Semantic Pass (Pass 2 - 12 Thread AI Engine)...")
+    # Importing the WhisperModel here ensures it only loads when needed and not during GUI initialization.
+    from faster_whisper import WhisperModel
     model = WhisperModel("base.en", device="cpu", compute_type="int8", cpu_threads=12)
     raw_segments = []
     total_hype, peak_wpm, b_count = 0, 0, 0
@@ -563,7 +572,6 @@ def process_vod():
         current_vod_sec -= (removed_clip['end'] - removed_clip['start'])
 
     # --- PHASE 5: HIGHLIGHT REEL BUCKET LOGIC ---
-    import random
     max_h_sec = max_h_mins * 60
     
     # NEW TIE-BREAKER LOGIC: Sorts by Score first. If Scores tie, it picks randomly.
