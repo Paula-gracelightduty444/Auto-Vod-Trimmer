@@ -387,7 +387,8 @@ def process_vod():
     total_sec = min_samples // sr
     seg_len = 3
     
-    chunk_args = [(i, y_mic[i*sr:(i+seg_len)*sr], y_game[i*sr:(i+seg_len)*sr], sr, seg_len, s_thresh, s_min) for i in range(0, total_sec, seg_len)]
+    # NATIVE MEMORY SHIELD: .copy() prevents NumPy from stuffing the entire 1.7GB parent array into the IPC pipe 5,000+ times.
+    chunk_args = [(i, y_mic[i*sr:(i+seg_len)*sr].copy(), y_game[i*sr:(i+seg_len)*sr].copy(), sr, seg_len, s_thresh, s_min) for i in range(0, total_sec, seg_len)]
     acoustic_results = {}
     
     # --- NEW: Global trackers for pitch diagnostics ---
