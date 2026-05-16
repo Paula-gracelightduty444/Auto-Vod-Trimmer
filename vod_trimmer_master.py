@@ -46,7 +46,7 @@ DEFAULT_CONFIG = {
         'highlight_exception_score': '100',
         'vod_normal_ratio': '0.75',
         'vod_keep_base_score': '7',
-        'panic_wpm_threshold': '185',
+        'panic_wpm_threshold': '200',
         'scream_threshold_hz': '2000',
         'scream_min_seconds': '1.0',
         'thumbnail_spread': '6.0',
@@ -141,7 +141,7 @@ def calculate_chaos_score(v_game, g_centroid, g_onset, g_crest, v_mic, mic_pitch
     word_count = len(found_text.split())
     average_wpm = (word_count / seg_duration) * 60 if seg_duration > 0 else 0
 
-    if average_wpm > 200:
+    if average_wpm > 600.0:
          logging.warning(f"[WPM DIAGNOSTIC] Potential AI Hallucination Loop! WPM: {average_wpm:.1f}. Text: '{found_text[:50]}...'")
 
     # --- Volume Bonuses ---
