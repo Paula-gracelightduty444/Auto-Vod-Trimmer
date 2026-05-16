@@ -1,4 +1,11 @@
 import os
+# --- CORE HARDWARE LOCKS: Prevent NumPy OpenMP Thread Thrashing ---
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
 import sys
 import subprocess
 import numpy as np
