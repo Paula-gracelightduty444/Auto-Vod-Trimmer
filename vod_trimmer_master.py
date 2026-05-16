@@ -30,41 +30,51 @@ else:
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 CONFIG_FILE = os.path.join(SCRIPT_DIR, "config.ini")
+DEFAULT_CONFIG = {
+    'PATHS': {
+        'input_video': 'my_stream.mp4',
+        'highlights_output': 'highlightvid.mp4',
+        'montage_output': 'TrimmedVOD.mp4',
+        'thumbnail_folder': 'thumbnails'
+    },
+    'OBS_TRACKS': {
+        'mic_track': '1',
+        'game_track': '2'
+    },
+    'THRESHOLDS': {
+        'highlight_max_minutes': '55',
+        'highlight_exception_score': '100',
+        'vod_normal_ratio': '0.75',
+        'vod_keep_base_score': '7',
+        'panic_wpm_threshold': '185',
+        'scream_threshold_hz': '2000',
+        'scream_min_seconds': '1.0',
+        'thumbnail_spread': '6.0',
+        'thumbnail_events': '5',
+        'clip_buffer_seconds': '2.0',
+        'max_clip_length': '180.0',
+        'max_merge_gap': '12.0'
+    },
+    'BOOKMARK': {
+        'codeword': 'Pineapple'
+    },
+    'VOCAB': {
+        'hype_words': 'clip that, oh fuck, oh shit, reloading, grenade'
+    },
+    'SHORTS': {
+        'num_shorts': '10'
+    }
+}
 
 _instance_lock = None
 
 def load_or_create_config():
     config = configparser.ConfigParser()
+    config.read_dict(DEFAULT_CONFIG)  # load defaults first
     if not os.path.exists(CONFIG_FILE):
-        config['PATHS'] = {
-            'input_video': 'my_stream.mp4',
-            'highlights_output': 'highlightvid.mp4',
-            'montage_output': 'TrimmedVOD.mp4',
-            'thumbnail_folder': 'thumbnails'
-        }
-        config['OBS_TRACKS'] = {'mic_track': '1', 'game_track': '2'}
-        # --- NEW: BAKED-IN STREAMER TUNED DEFAULTS ---
-        config['THRESHOLDS'] = {
-            'highlight_max_minutes': '55',
-            'highlight_exception_score': '100',
-            'vod_normal_ratio': '0.75',
-            'vod_keep_base_score': '7',
-            'panic_wpm_threshold': '185',
-            'scream_threshold_hz': '2000', # REVERTED TO 2000Hz
-            'scream_min_seconds': '1.0',
-            'thumbnail_spread': '6.0',
-            'thumbnail_events': '5',
-            'clip_buffer_seconds': '2.0',
-            'max_clip_length': '180.0',
-            'max_merge_gap': '12.0'
-        }
-        config['BOOKMARK'] = {'codeword': 'Pineapple'}
-        # REFINED VOCAB TO ACTION/PRECEDING ACTION
-        config['VOCAB'] = {'hype_words': 'clip that, oh fuck, oh shit, reloading, grenade'}
-        config['SHORTS'] = {'num_shorts': '10'}
-        with open(CONFIG_FILE, 'w') as configfile:
-            config.write(configfile)
-    config.read(CONFIG_FILE)
+        with open(CONFIG_FILE, 'w') as f:
+            config.write(f)
+    config.read(CONFIG_FILE)  # user values override defaults
     return config
 
 def acquire_instance_lock():
@@ -113,37 +123,34 @@ class Heartbeat:
 beat = Heartbeat()
 
 # ==========================================
-# 4. MULTIPROCESSING & MATH ALGORITHMS
+# 3. MULTIPROCESSING & MATH ALGORITHMS
 # ==========================================
-def calculate_prosody(segment, sr):
-    if len(segment) < sr * 2: return 1.0
-    # Narrowed fmax to 400.0 to ignore keyboard clicks
-    pitches, mags = librosa.piptrack(y=segment, sr=sr, fmin=75.0, fmax=400.0)
-    pitch_values = [pitches[mags[:, t].argmax(), t] for t in range(pitches.shape[1]) if pitches[mags[:, t].argmax(), t] > 0]
-    if len(pitch_values) < 20: return 1.0
-    std = np.std(pitch_values)
+def calculate_prosody(pitch_values_speech):
+    # pitch_values_speech: pre-filtered to 80-400Hz speech range, avoids a second piptrack call
+    if len(pitch_values_speech) < 20: return 1.0
+    std = np.std(pitch_values_speech)
     # Raised monotone penalty threshold to std < 30 to match human vocal biology
     return 1.5 if std > 50 else (0.7 if std < 30 else 1.0)
 
 def calculate_chaos_score(v_game, g_centroid, g_onset, g_crest, v_mic, mic_pitch_peak, is_scream,
-is_panic, prosody, transcription, hype_list, bookmark_word, exception_gate,
-speech_ratio, seg_duration=30.0):
-    
+                          is_panic, prosody, transcription, hype_patterns, laugh_pattern, bookmark_pattern, exception_gate,
+                          speech_ratio, seg_duration=3.0):
+
     # --- Linguistic Processing & WPM Diagnostic ---
     found_text = transcription.lower()
     word_count = len(found_text.split())
     average_wpm = (word_count / seg_duration) * 60 if seg_duration > 0 else 0
-    
+
     if average_wpm > 200:
          logging.warning(f"[WPM DIAGNOSTIC] Potential AI Hallucination Loop! WPM: {average_wpm:.1f}. Text: '{found_text[:50]}...'")
 
     # --- Volume Bonuses ---
     vocal_vol_bonus = v_mic * 2.5
     game_vol_bonus = v_game * 2.5
-    
+
     # --- RANGE BEAM 1: Scream Detection (PITCH) ---
     scream_bonus = 8.0 if (is_scream or (2000 < mic_pitch_peak < 4000)) else 0.0
-    
+
     # --- THE WALL OF NOISE SHIELD ---
     # Lowered back to 1.3 to still filter out low volume hums but retain supressed gunfire.
     # Gunfights and explosive impacts have sharp volume spikes (Crest factor > 2.5+).
@@ -162,40 +169,37 @@ speech_ratio, seg_duration=30.0):
         # --- RANGE BEAM 2.5: Melee / Gore Detection ---
         # BUFFED: Gore weight increased to 6.0 to match combat intensity
         gore_bonus = 6.0 if (500 < g_centroid <= 1500) and (g_onset > 4.0) else 0.0
-    
-   # --- NEW: TRUE COMBAT MULTIPLIER ---
-    # BUFFED: Action intensity now carries more weight (1.7x) than vocal panic
+
+    # --- NEW: TRUE COMBAT MULTIPLIER ---
     is_heavy_combat = (combat_bonus > 0 and impact_bonus > 0) or (gore_bonus > 0)
     combat_multiplier = 1.7 if is_heavy_combat else 1.0
 
     prosody_bonus = 4.0 if prosody > 1.0 else (-2.0 if prosody < 1.0 else 0.0)
     speech_bonus = speech_ratio * 2.5
-    
+
     # --- NLP INTENT: HYPE WORDS ---
-    matches = [word for word in hype_list if re.search(rf'\b{re.escape(word)}\b', found_text)]
-    # Flat hype bonus removed entirely to prevent double-dipping. Replaced with multiplier below.
-    hype_bonus = 0.0
-    
+    n_matches = sum(1 for p in hype_patterns if p.search(found_text))
+
     # --- RANGE BEAM 3: Laughter Detection ---
-    is_laughing = bool(re.search(r'\b(haha|hahaha|lmao|hehe)\b|\[laughs\]|\(laughing\)', found_text))
+    is_laughing = bool(laugh_pattern.search(found_text))
     laugh_bonus = 2.0 if is_laughing else 0.0
-    
+
     # Base floor of 2.0
-    sub_total = 2.0 + vocal_vol_bonus + game_vol_bonus + scream_bonus + combat_bonus + prosody_bonus + speech_bonus + impact_bonus + hype_bonus + laugh_bonus
-    
+    sub_total = 2.0 + vocal_vol_bonus + game_vol_bonus + scream_bonus + combat_bonus + gore_bonus + prosody_bonus + speech_bonus + impact_bonus + laugh_bonus
+
     # --- NEW: HYPE MULTIPLIER (Human Intent Flag) ---
     # If the user explicitly uses a combat callout, stretch the final score by 1.5x
-    hype_multiplier = 1.5 if len(matches) > 0 else 1.0
+    hype_multiplier = 1.5 if n_matches > 0 else 1.0
 
     # --- TRIPLE MULTIPLIER STACK ---
     panic_multiplier = 1.3 if is_panic else 1.0
     final_score = sub_total * panic_multiplier * combat_multiplier * hype_multiplier
-    
-    is_bookmarked = bool(re.search(rf'\b{re.escape(bookmark_word)}\b', found_text))
+
+    is_bookmarked = bool(bookmark_pattern.search(found_text))
     if is_bookmarked:
         final_score = max(final_score, exception_gate + 2.0)
-        
-    return final_score, len(matches), is_bookmarked
+
+    return final_score, n_matches, is_bookmarked
 
 def analyze_acoustic_chunk(args):
     i, c_mic, c_game, sr, seg_len, s_thresh, s_min = args
@@ -221,27 +225,31 @@ def analyze_acoustic_chunk(args):
     g_c = np.mean(librosa.feature.spectral_centroid(y=c_game_percussive, sr=sr))
     g_o = np.max(librosa.onset.onset_strength(y=c_game_percussive, sr=sr))
     
-    # (m_c removed because we use True Pitch c_peak/c_avg for the mic instead)
-    pros = calculate_prosody(c_mic, sr)
+    # Single wide-range piptrack call, filtered views feed both prosody and pitch harvest below
     pitches, mags = librosa.piptrack(y=c_mic, sr=sr, fmin=75.0, fmax=4000.0)
-    
+
     # --- NEW: Pitch Harvesting ---
     pitch_values = [pitches[mags[:, t].argmax(), t] for t in range(pitches.shape[1]) if pitches[mags[:, t].argmax(), t] > 0]
     c_peak = max(pitch_values) if pitch_values else 0.0
     c_avg = np.mean(pitch_values) if pitch_values else 0.0
+
+    # Prosody uses only the speech-range pitches (80-400Hz), no second piptrack needed
+    pitch_values_speech = [p for p in pitch_values if 80.0 <= p <= 400.0]
+    pros = calculate_prosody(pitch_values_speech)
     
     s_time = 0.0
     f_per_sec = pitches.shape[1] // seg_len
-    for j in range(seg_len):
-        start_f = j * f_per_sec
-        end_f = (j + 1) * f_per_sec if j < seg_len - 1 else pitches.shape[1]
-        if np.max(pitches[:, start_f:end_f]) > s_thresh: s_time += 1.0
+    if f_per_sec > 0:
+        for j in range(seg_len):
+            start_f = j * f_per_sec
+            end_f = (j + 1) * f_per_sec if j < seg_len - 1 else pitches.shape[1]
+            if np.max(pitches[:, start_f:end_f]) > s_thresh: s_time += 1.0
         
     # Return updated to pass back c_peak and c_avg, and g_crest instead of m_c
     return (i, v_game, v_mic, g_c, g_crest, g_o, pros, (s_time >= s_min), c_peak, c_avg)
 
 # ==========================================
-# 5. THE MAIN ENGINE
+# 4. THE MAIN ENGINE
 # ==========================================
 
 def process_vod():
@@ -257,39 +265,43 @@ def process_vod():
     cfg = load_or_create_config()
     start_t = time.time()
     
-    # RESTORED: All config loading logic now includes fallbacks to prevent KeyErrors
-    input_video = cfg.get('PATHS', 'input_video', fallback='my_stream.mp4')
-    highlights_out = cfg.get('PATHS', 'highlights_output', fallback='highlightvid.mp4')
-    montage_out = cfg.get('PATHS', 'montage_output', fallback='TrimmedVOD.mp4')
-    thumb_dir = cfg.get('PATHS', 'thumbnail_folder', fallback='thumbnails')
+    input_video = cfg.get('PATHS', 'input_video')
+    highlights_out = cfg.get('PATHS', 'highlights_output')
+    montage_out = cfg.get('PATHS', 'montage_output')
+    thumb_dir = cfg.get('PATHS', 'thumbnail_folder')
     
-    mic_idx = cfg.getint('OBS_TRACKS', 'mic_track', fallback=1)
-    game_idx = cfg.getint('OBS_TRACKS', 'game_track', fallback=2)
+    mic_idx = cfg.getint('OBS_TRACKS', 'mic_track')
+    game_idx = cfg.getint('OBS_TRACKS', 'game_track')
     
     # === UPDATED THRESHOLDS WITH ARTIFACT CEILINGS ===
-    max_h_mins = cfg.getint('THRESHOLDS', 'highlight_max_minutes', fallback=55)
-    ex_gate = cfg.getfloat('THRESHOLDS', 'highlight_exception_score', fallback=100.0)
-    target_ratio = cfg.getfloat('THRESHOLDS', 'vod_normal_ratio', fallback=0.75)
-    vod_base_score = cfg.getfloat('THRESHOLDS', 'vod_keep_base_score', fallback=7.0)
+    max_h_mins = cfg.getint('THRESHOLDS', 'highlight_max_minutes')
+    ex_gate = cfg.getfloat('THRESHOLDS', 'highlight_exception_score')
+    target_ratio = cfg.getfloat('THRESHOLDS', 'vod_normal_ratio')
+    vod_base_score = cfg.getfloat('THRESHOLDS', 'vod_keep_base_score')
     
     # Scream Logic Reverted to 2000Hz default
-    s_thresh = cfg.getfloat('THRESHOLDS', 'scream_threshold_hz', fallback=2000)
-    s_min = cfg.getfloat('THRESHOLDS', 'scream_min_seconds', fallback=1.0)
+    s_thresh = cfg.getfloat('THRESHOLDS', 'scream_threshold_hz')
+    s_min = cfg.getfloat('THRESHOLDS', 'scream_min_seconds')
     scream_ceiling = 3500.0 # Anything above this is likely digital noise, not a human scream.
     
     # Linguistic Logic
-    panic_wpm = cfg.getfloat('THRESHOLDS', 'panic_wpm_threshold', fallback=185)
+    panic_wpm = cfg.getfloat('THRESHOLDS', 'panic_wpm_threshold')
     wpm_ceiling = 600.0 # Guinness World Record is ~600. Anything higher is an AI loop.
     
-    t_spread = cfg.getfloat('THRESHOLDS', 'thumbnail_spread', fallback=6.0)
-    clip_pad = cfg.getfloat('THRESHOLDS', 'clip_buffer_seconds', fallback=2.0)
+    t_spread = cfg.getfloat('THRESHOLDS', 'thumbnail_spread')
+    clip_pad = cfg.getfloat('THRESHOLDS', 'clip_buffer_seconds')
     
     # NEW GUI LINKAGE FOR SMART MERGE:
-    cfg_max_len = cfg.getfloat('THRESHOLDS', 'max_clip_length', fallback=180.0)
-    cfg_max_gap = cfg.getfloat('THRESHOLDS', 'max_merge_gap', fallback=12.0)
+    cfg_max_len = cfg.getfloat('THRESHOLDS', 'max_clip_length')
+    cfg_max_gap = cfg.getfloat('THRESHOLDS', 'max_merge_gap')
     
     b_word = cfg.get('BOOKMARK', 'codeword', fallback='Pineapple').lower().strip()
-    h_list = [w.strip().lower() for w in cfg.get('VOCAB', 'hype_words', fallback='clip that, oh fuck, oh shit, reloading, grenade').split(',') if w.strip()]
+    h_list = [w.strip().lower() for w in cfg.get('VOCAB', 'hype_words').split(',') if w.strip()]
+
+    # Pre-compile all regex patterns once to get reused across every scored chunk
+    hype_patterns    = [re.compile(rf'\b{re.escape(w)}\b') for w in h_list]
+    laugh_pattern    = re.compile(r'\b(haha|hahaha|lmao|hehe)\b|\[laughs\]|\(laughing\)')
+    bookmark_pattern = re.compile(rf'\b{re.escape(b_word)}\b')
 
     if not os.path.exists(input_video):
         print(f"[CRITICAL] Input video '{input_video}' not found.")
@@ -301,7 +313,7 @@ def process_vod():
     probe_proc = subprocess.Popen(probe_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     probe_out, _ = probe_proc.communicate()
     # Count how many lines/streams were found
-    stream_count = len(probe_out.decode().strip().split('\n')) if probe_out else 0
+    stream_count = len([l for l in probe_out.decode().strip().split('\n') if l]) if probe_out else 0
     logging.info(f" [*] SUCCESS: Found {stream_count} audio streams in file.")
 
     def extract_to_ram(track_index, name):
@@ -357,14 +369,17 @@ def process_vod():
             return result
             
         # Ultimate failsafe
+        logging.critical(f" [!!!] CRITICAL: All audio extraction tiers failed for '{name}'. No audio data available.")
         return np.array([]), 16000
 
     y_mic, sr = extract_to_ram(mic_idx, "Mic")
     y_game, _ = extract_to_ram(game_idx, "Game")
-    total_sec = len(y_mic) // sr
+    min_samples = min(len(y_mic), len(y_game))
+    y_mic = y_mic[:min_samples]
+    y_game = y_game[:min_samples]
+    total_sec = min_samples // sr
     seg_len = 3
     
-    print("\n>>> Acoustic Pass (Pass 1 - 8 Core Multiprocessing)...")
     chunk_args = [(i, y_mic[i*sr:(i+seg_len)*sr], y_game[i*sr:(i+seg_len)*sr], sr, seg_len, s_thresh, s_min) for i in range(0, total_sec, seg_len)]
     acoustic_results = {}
     
@@ -372,28 +387,39 @@ def process_vod():
     global_pitch_peaks = []
     global_pitch_avgs = []
 
-    with concurrent.futures.ProcessPoolExecutor(max_workers=8) as executor:
+    max_workers = min(os.cpu_count() or 8, len(chunk_args))
+    print(f"\n>>> Acoustic Pass (Pass 1 - {max_workers} Core Multiprocessing)...")
+    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
         for res in tqdm(executor.map(analyze_acoustic_chunk, chunk_args), total=len(chunk_args), desc="Librosa Math", unit="chunk"):
             i, v_g, v_m, g_c, g_crest, g_o, pros, is_s, c_peak, c_avg = res
-            
+
             # --- SANITIZED DIAGNOSTIC TRACKING (V1.2.1 TWIN-BEAM) ---
             # Gate for Scream Peaks: Only look at the Scream Sanctuary
             # We look for highlights only in the 2200Hz - 3500Hz range.
-            if s_thresh < c_peak < scream_ceiling:  
+            if s_thresh < c_peak < scream_ceiling:
                 global_pitch_peaks.append(c_peak)
-            
+
             # Gate for Vocal Baseline: Only look at the Human Speech Floor
             # Humans baseline between 80Hz and 400Hz. This deletes the 521Hz hiss.
             if 80 < c_avg < 400:
                 global_pitch_avgs.append(c_avg)
-            
+
             acoustic_results[i] = {'v_g': v_g, 'v_m': v_m, 'g_c': g_c, 'g_crest': g_crest, 'g_o': g_o, 'pros': pros, 'is_s': is_s, 'c_peak': c_peak, 'c_avg': c_avg}
 
-        # --- PHASE 2: SEMANTIC PASS (WHISPER AI) ---
-    print("\n>>> Semantic Pass (Pass 2 - 12 Thread AI Engine)...")
+    del chunk_args  # free the view list
+    del y_game      # now free the actual 1.7GB game audio buffer
+
+    # --- PHASE 2: SEMANTIC PASS (WHISPER AI) ---
     # Importing the WhisperModel here ensures it only loads when needed and not during GUI initialization.
     from faster_whisper import WhisperModel
-    model = WhisperModel("base.en", device="cpu", compute_type="int8", cpu_threads=12)
+    try:
+        import torch
+        _device = "cuda" if torch.cuda.is_available() else "cpu"
+    except ImportError:
+        _device = "cpu"
+    _compute = "float16" if _device == "cuda" else "int8"
+    print(f"\n>>> Semantic Pass (Pass 2 - {os.cpu_count() or 12} Thread AI Engine on {_device.upper()})...")
+    model = WhisperModel("base.en", device=_device, compute_type=_compute, cpu_threads=os.cpu_count() or 12)
     raw_segments = []
     total_hype, peak_wpm, b_count = 0, 0, 0
     wpm_log = [] # Master bucket for average WPM calculation
@@ -420,41 +446,48 @@ def process_vod():
             pbar.update(total_sec - pbar.n)
             
     logging.info(f" [*] SUCCESS: Transcribed {len(all_speech_segments)} distinct speech segments natively.")
+    del y_mic  # no longer needed, free before scoring loop
+
+    # Pre-filter hallucinations once so the scoring loop never re-checks them
+    valid_segs = [s for s in all_speech_segments if s.compression_ratio <= 2.4 and s.no_speech_prob <= 0.6]
 
     # 2. MICRO-PASS: Map AI timestamps back to the 3-second acoustic chunks
+    # Pointer-based O(n) scan: valid_segs are in time order, so we never restart from 0
+    seg_ptr = 0
     for i in tqdm(range(0, total_sec, seg_len), desc="Chaos Scoring", unit="chunk"):
         data = acoustic_results[i]
         if data['v_m'] < 0.01 and data['v_g'] < 0.01: continue
-        
+
         chunk_start = i
         chunk_end = i + seg_len
         chunk_texts = []
         speech_overlap = 0.0
-        
-        for s in all_speech_segments:
-            # --- 1. THE HALLUCINATION & STATIC SHIELD ---
-            # If the AI is looping (compression > 2.4) or guessing at static (no_speech > 0.6), ignore the entire segment.
-            if s.compression_ratio > 2.4 or s.no_speech_prob > 0.6:
-                continue
-                
-            # Check if the AI's native speech segment overlaps with this specific 3-second window
-            if s.start < chunk_end and s.end > chunk_start:
-                
-                # BUG FIX: Word-level slicing. Only append the exact words spoken inside this 3-second block
-                if s.words:
-                    for w in s.words:
-                        # w.start ensures the word is only assigned to ONE chunk, killing the duplication
-                        if chunk_start <= w.start < chunk_end:
-                            # --- 2. WORD-LEVEL CONFIDENCE GATE ---
-                            # Only accept the word if Whisper is at least 40% sure it was actually spoken
-                            if w.probability > 0.40:
-                                chunk_texts.append(w.word.strip())
-                            
-                # Calculate the exact duration of the speech that fell into this chunk
-                overlap_s = max(s.start, chunk_start)
-                overlap_e = min(s.end, chunk_end)
-                speech_overlap += (overlap_e - overlap_s)
-                
+
+        # Advance base pointer past segments that have fully ended before this chunk
+        while seg_ptr < len(valid_segs) and valid_segs[seg_ptr].end <= chunk_start:
+            seg_ptr += 1
+
+        # Walk forward from the base pointer for segments overlapping this chunk
+        j = seg_ptr
+        while j < len(valid_segs) and valid_segs[j].start < chunk_end:
+            s = valid_segs[j]
+
+            # BUG FIX: Word-level slicing. Only append the exact words spoken inside this 3-second block
+            if s.words:
+                for w in s.words:
+                    # w.start ensures the word is only assigned to ONE chunk, killing the duplication
+                    if chunk_start <= w.start < chunk_end:
+                        # --- 2. WORD-LEVEL CONFIDENCE GATE ---
+                        # Only accept the word if Whisper is at least 40% sure it was actually spoken
+                        if w.probability > 0.40:
+                            chunk_texts.append(w.word.strip())
+
+            # Calculate the exact duration of the speech that fell into this chunk
+            overlap_s = max(s.start, chunk_start)
+            overlap_e = min(s.end, chunk_end)
+            speech_overlap += (overlap_e - overlap_s)
+            j += 1
+
         text = " ".join(chunk_texts)
         
         # --- ARTIFACT FILTERING ---
@@ -492,10 +525,10 @@ def process_vod():
         speech_ratio = min(1.0, speech_overlap / seg_len) if speech_overlap > 0 else 0.0
         
         score, h_inc, is_b = calculate_chaos_score(
-            data['v_g'], f_g_centroid, data['g_o'], data['g_crest'], 
-            data['v_m'], f_mic_pitch, is_scream_valid, 
-            is_panic_mode, data['pros'], text, 
-            h_list, b_word, ex_gate, speech_ratio
+            data['v_g'], f_g_centroid, data['g_o'], data['g_crest'],
+            data['v_m'], f_mic_pitch, is_scream_valid,
+            is_panic_mode, data['pros'], text,
+            hype_patterns, laugh_pattern, bookmark_pattern, ex_gate, speech_ratio
         )
         
         total_hype += h_inc
@@ -504,7 +537,7 @@ def process_vod():
             if is_b: b_count += 1
 
     # --- PHASE 2.5: STRICT SMART MERGE ENGINE ---
-    def merge(segs, pad, max_gap=15.0, max_len=300.0):
+    def merge(segs, pad, max_gap=15.0, max_len=300.0, chunk_sec=3):
         if not segs: return []
         segs.sort(key=lambda x: x['start'])
         merged_list = []
@@ -523,7 +556,7 @@ def process_vod():
             else:
                 # Close the current clip and calculate its final density score
                 actual_length = current_clip['end'] - current_clip['start']
-                current_clip['score'] = current_clip['score_sum'] / (actual_length / seg_len) if actual_length > 0 else current_clip['score']
+                current_clip['score'] = current_clip['score_sum'] / (actual_length / chunk_sec) if actual_length > 0 else current_clip['score']
                 merged_list.append(current_clip)
                 
                 current_clip = dict(nxt)
@@ -531,7 +564,7 @@ def process_vod():
         
         # Close the final clip
         actual_length = current_clip['end'] - current_clip['start']
-        current_clip['score'] = current_clip['score_sum'] / (actual_length / seg_len) if actual_length > 0 else current_clip['score']
+        current_clip['score'] = current_clip['score_sum'] / (actual_length / chunk_sec) if actual_length > 0 else current_clip['score']
         merged_list.append(current_clip)
 
         # Apply padding and ensure no overlaps
@@ -552,7 +585,7 @@ def process_vod():
     
     # The merge function enforces cfg_max_len natively, guaranteeing organic scores
     # and preventing highlight score cloning.
-    merged_clips = merge(valid_chunks, clip_pad, max_gap=cfg_max_gap, max_len=cfg_max_len)
+    merged_clips = merge(valid_chunks, clip_pad, max_gap=cfg_max_gap, max_len=cfg_max_len, chunk_sec=seg_len)
     
     # --- PHASE 4: TRIMMED VOD LOGIC (RATIO PRUNING) ---
     max_vod_sec = total_sec * target_ratio
@@ -601,8 +634,11 @@ def process_vod():
         with open(cp, "w") as f:
             for c in sorted(segs, key=lambda x: x['start']): f.write(f"file '{input_video}'\ninpoint {c['start']}\noutpoint {c['end']}\n")
         beat.start(f"Rendering {desc}")
-        subprocess.run(['ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', cp, '-c:v', 'copy', '-c:a', 'aac', '-af', 'aresample=async=1', out_file], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        os.remove(cp); beat.stop()
+        try:
+            subprocess.run(['ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', cp, '-c:v', 'copy', '-c:a', 'aac', '-af', 'aresample=async=1', out_file], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        finally:
+            os.remove(cp)
+            beat.stop()
         
     print("\n>>> 4/4: Lossless Video Rendering...")
     render(final_vod, montage_out, "Trimmed VOD")
@@ -638,17 +674,15 @@ def process_vod():
     print("\n --- TOP 5 HIGHLIGHT EVENTS ---")
     top_clips = sorted(merged_clips, key=lambda x: x['score'], reverse=True)[:5]
     for idx, c in enumerate(top_clips):
-        m, s = divmod(c['start'], 60)
-        print(f"  {idx+1}. Score {c['score']:.1f} @ {int(m):02d}:{int(s):02d}")
+        m, sec = divmod(c['start'], 60)
+        print(f"  {idx+1}. Score {c['score']:.1f} @ {int(m):02d}:{int(sec):02d}")
 
-    # --- NEW: LOWEST SURVIVING CLIPS DIAGNOSTIC ---
     print("\n --- LOWEST 5 CLIPS KEPT (Trimmed VOD) ---")
     if final_vod:
-        # Sort the final surviving clips from lowest to highest
         bottom_clips = sorted(final_vod, key=lambda x: x['score'])[:5]
         for idx, c in enumerate(bottom_clips):
-            m, s = divmod(c['start'], 60)
-            print(f"  {idx+1}. Score {c['score']:.1f} @ {int(m):02d}:{int(s):02d}")
+            m, sec = divmod(c['start'], 60)
+            print(f"  {idx+1}. Score {c['score']:.1f} @ {int(m):02d}:{int(sec):02d}")
     else:
         print("  No clips survived the pruning process.")
     
