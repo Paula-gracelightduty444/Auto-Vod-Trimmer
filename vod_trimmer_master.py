@@ -412,14 +412,10 @@ def process_vod():
     # --- PHASE 2: SEMANTIC PASS (WHISPER AI) ---
     # Importing the WhisperModel here ensures it only loads when needed and not during GUI initialization.
     from faster_whisper import WhisperModel
-    try:
-        import torch
-        _device = "cuda" if torch.cuda.is_available() else "cpu"
-    except ImportError:
-        _device = "cpu"
-    _compute = "float16" if _device == "cuda" else "int8"
-    print(f"\n>>> Semantic Pass (Pass 2 - {os.cpu_count() or 12} Thread AI Engine on {_device.upper()})...")
-    model = WhisperModel("base.en", device=_device, compute_type=_compute, cpu_threads=os.cpu_count() or 12)
+    
+    # NATIVE CPU ENFORCEMENT (Bypasses CUDA/PyTorch Thread Thrashing)
+    print(f"\n>>> Semantic Pass (Pass 2 - {os.cpu_count() or 12} Thread AI Engine on CPU)...")
+    model = WhisperModel("base.en", device="cpu", compute_type="int8", cpu_threads=os.cpu_count() or 12)
     raw_segments = []
     total_hype, peak_wpm, b_count = 0, 0, 0
     wpm_log = [] # Master bucket for average WPM calculation
