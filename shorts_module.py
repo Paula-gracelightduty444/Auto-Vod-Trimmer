@@ -52,13 +52,15 @@ def generate_shorts(ranked_clips, input_video, num_shorts, t_spread, thumb_dir, 
         out_file = os.path.join(output_dir, f"Short_{exported_count+1}_Score{score:.1f}.mp4")
         
         # FFmpeg command to quickly slice the video without heavy rendering
+        # UPGRADED: Inherits the main engine's async audio resampling to prevent keyframe desync
         cmd = [
             'ffmpeg', '-y',
             '-ss', str(start_t),
             '-to', str(end_t),
             '-i', input_video,
             '-c:v', 'copy',
-            '-c:a', 'copy',
+            '-c:a', 'aac',                  # Explicitly re-encode the audio
+            '-af', 'aresample=async=1',     # Force audio to sync to video keyframe timestamps
             out_file
         ]
         
