@@ -417,13 +417,13 @@ def process_vod():
     del chunk_args  # free the view list
     del y_game      # now free the actual 1.7GB game audio buffer
 
-  # --- PHASE 2: SEMANTIC PASS (WHISPER AI) ---
-   # Importing the WhisperModel here ensures it only loads when needed and not during GUI initialization.
-   from faster_whisper import WhisperModel
-   
-   # NATIVE CPU ENFORCEMENT: Capped at 8 threads for optimal int8 matrix math speed
-   print(f"\n>>> Semantic Pass (Pass 2 - 8 Thread AI Engine on CPU)...")
-   model = WhisperModel("base.en", device="cpu", compute_type="int8", cpu_threads=8)
+   # --- PHASE 2: SEMANTIC PASS (WHISPER AI) ---
+    # Importing the WhisperModel here ensures it only loads when needed and not during GUI initialization.
+    from faster_whisper import WhisperModel
+    
+    # NATIVE CPU ENFORCEMENT: Capped at 8 threads for optimal int8 matrix math speed
+    print(f"\n>>> Semantic Pass (Pass 2 - 8 Thread AI Engine on CPU)...")
+    model = WhisperModel("base.en", device="cpu", compute_type="int8", cpu_threads=8)
     raw_segments = []
     total_hype, peak_wpm, b_count = 0, 0, 0
     wpm_log = [] # Master bucket for average WPM calculation
