@@ -417,7 +417,7 @@ def process_vod():
     del chunk_args  # free the view list
     del y_game      # now free the actual 1.7GB game audio buffer
 
-   # --- PHASE 2: SEMANTIC PASS (WHISPER AI) ---
+  # --- PHASE 2: SEMANTIC PASS (WHISPER AI) ---
    # Importing the WhisperModel here ensures it only loads when needed and not during GUI initialization.
    from faster_whisper import WhisperModel
    
